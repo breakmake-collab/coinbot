@@ -15,7 +15,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11'  # 👈 3.10에서 3.11로 수정 (이게 핵심!)
 
       - name: Install dependencies
         run: |
