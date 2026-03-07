@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 # 1. 비트겟(Bitget) 선물 설정
 # =====================================================
 exchange = ccxt.bitget({
-    'options': {'defaultType': 'swap'}, # 선물 마켓 고정
+    'options': {'defaultType': 'swap'}, # 선물 마켓(Swap) 고정
     'enableRateLimit': True,
 })
 
@@ -21,28 +21,34 @@ def send_telegram(msg):
     if not TELEGRAM_TOKEN or not CHAT_ID: return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
+        # 타점이 여러 개일 수 있으므로 타임아웃을 넉넉히 잡고 전송
         requests.post(url, data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
     except: pass
 
 def get_df(symbol):
     try:
-        # 비트겟 1시간봉 데이터 요청
+        # 비트겟 1시간봉 데이터 100개 요청
         ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=100)
+        if not ohlcv: return pd.DataFrame()
+        
         df = pd.DataFrame(ohlcv, columns=['time','open','high','low','close','volume'])
         
         # 지표 계산 (RSI, ADX, DI)
         df['rsi'] = ta.rsi(df['close'], length=14)
         adx_data = ta.adx(df['high'], df['low'], df['close'], length=14)
-        df['adx'] = adx_data.iloc[:, 0]
-        df['plus_di'] = adx_data.iloc[:, 1]
+        
+        # pandas-ta의 ADX 출력 컬럼명에 맞춰 매핑
+        df['adx'] = adx_data.iloc[:, 0]     # ADX_14
+        df['plus_di'] = adx_data.iloc[:, 1]  # DMP_14
         return df
     except:
         return pd.DataFrame()
 
 def run_scan():
-    print(f"===== BITGET MEGA 100 SCAN START ({datetime.now(timezone.utc)}) =====")
+    # 로그 인코딩 문제 방지를 위해 영어 로그 유지
+    print(f"===== BITGET FULL SCAN START ({datetime.now(timezone.utc)}) =====")
     
-    # 🔥 비트겟 선물 주요 알트코인 100개 (거래량 순 위주)
+    # 알트코인 100개 리스트
     target_symbols = [
         'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOTUSDT',
         'LINKUSDT', 'MATICUSDT', 'NEARUSDT', 'LTCUSDT', 'BCHUSDT', 'SHIBUSDT', 'TRXUSDT', 'UNIUSDT',
@@ -59,7 +65,7 @@ def run_scan():
         'GALUSDT', 'ARKUSDT', 'PIXELUSDT', 'PYTHUSDT'
     ]
     
-    print(f"Total Targets: {len(target_symbols)}")
+    print(f"Scanning {len(target_symbols)} symbols...")
     found_count = 0
 
     for symbol in target_symbols:
@@ -67,8 +73,8 @@ def run_scan():
         if df.empty or len(df) < 50:
             continue
             
-        last = df.iloc[-2]  # 확정봉
-        prev = df.iloc[-3]  # 이전봉
+        last = df.iloc[-2]  # 직전 확정봉
+        prev = df.iloc[-3]  # 그 전봉
         
         rsi = last['rsi']
         plus_di = last['plus_di']
@@ -77,27 +83,28 @@ def run_scan():
         v_prev = prev['volume']
 
         # -----------------------------------------------------
-        # ⚠️ 테스트용 조건: RSI < 70 (신호 확인용)
-        # 확인 후 사용자님의 실제 조건으로 변경하세요:
-        # if rsi < 30 and plus_di > 36 and adx > 20 and v_now > v_prev:
+        # 🔥 실전 조건: RSI < 30 AND +DI > 36 AND ADX >= 20 AND 거래량 증가
         # -----------------------------------------------------
-        if not pd.isna(rsi) and rsi < 70:
+        if (not pd.isna(rsi) and rsi < 30 and 
+            plus_di > 36 and 
+            adx >= 20 and 
+            v_now > v_prev):
+            
             found_count += 1
-            msg = (f"✅ [BITGET SIGNAL]\n"
+            msg = (f"🚨 [REAL SIGNAL FOUND]\n"
                    f"Symbol: {symbol}\n"
-                   f"Price: {last['close']}\n"
+                   f"Price: {last['close']}\n\n"
                    f"RSI: {round(rsi, 2)}\n"
                    f"ADX: {round(adx, 2)}\n"
-                   f"Volume: Increased")
+                   f"+DI: {round(plus_di, 2)}\n"
+                   f"Vol: Up ({round(v_now/v_prev, 1)}x) ✅")
             send_telegram(msg)
-            print(f"Found: {symbol}")
-            
-            # 테스트 시 과도한 메시지 방지 (5개 발견 시 종료)
-            if found_count >= 5: break
+            print(f"Signal: {symbol}")
 
-        time.sleep(0.15) # API 속도 제한 준수
+        # 100개 스캔 시 API 차단 방지를 위해 약한 딜레이 유지
+        time.sleep(0.1)
 
-    print(f"===== SCAN END (Found: {found_count}) =====")
+    print(f"===== SCAN END (Total Found: {found_count}) =====")
 
 if __name__ == "__main__":
     run_scan()
