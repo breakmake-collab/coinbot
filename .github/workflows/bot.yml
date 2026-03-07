@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
@@ -27,10 +27,14 @@ jobs:
         run: |
           if [ -f "requirements.txt" ]; then
             echo "requirements.txt found. Installing dependencies..."
-            pip install --no-cache-dir -r requirements.txt
+            pip install --no-cache-dir -r requirements.txt || echo "⚠️ Dependency installation failed."
           else
             echo "⚠️ requirements.txt not found. Skipping dependency installation."
           fi
 
       - name: Run bot
-        run: python coin.py
+        run: |
+          python coin.py || \
+          curl -s -X POST https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage \
+            -d chat_id=${CHAT_ID} \
+            -d text="⚠️ Crypto Signal Bot 실행 실패!"
