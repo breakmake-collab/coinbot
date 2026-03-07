@@ -1,6 +1,7 @@
 ccxt==4.5.42
 pandas==2.1.0
-pandas_ta==0.3.17b0  # Python 3.11 이상에서 설치 가능
+pandas_ta==0.3.17b0
 requests
 python-telegram-bot
+
 
