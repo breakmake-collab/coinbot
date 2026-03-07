@@ -1,26 +1,23 @@
-name: Coin Bot
+name: Crypto Signal Scan
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '0 * * * *'  # 매 시간 실행
   workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Setup Python
+      - uses: actions/checkout@v3
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
-
-      - name: Install packages
-        run: |
-          pip install -r requirements.txt
-
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install ccxt pandas pandas_ta requests
       - name: Run bot
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python coin.py
