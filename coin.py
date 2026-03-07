@@ -23,7 +23,7 @@ exchange = ccxt.binance({
 })
 
 # =====================================================
-# 텔레그램 정보
+# 텔레그램 정보 (환경변수)
 # =====================================================
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -37,6 +37,7 @@ signal_found = False
 # =====================================================
 # 텔레그램 메시지 보내기
 # =====================================================
+
 def send_telegram(msg):
 
     global sent_messages
@@ -59,6 +60,7 @@ def send_telegram(msg):
 # =====================================================
 # 선물 전체 코인 불러오기
 # =====================================================
+
 def get_symbols():
 
     markets = exchange.load_markets()
@@ -78,6 +80,7 @@ def get_symbols():
 # =====================================================
 # 캔들 데이터 + 지표 계산
 # =====================================================
+
 def get_df(symbol):
 
     ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=120)
@@ -91,8 +94,8 @@ def get_df(symbol):
 
     adx = ta.adx(df['high'], df['low'], df['close'], length=14)
 
-    df['adx'] = adx.iloc[:,0]      # ADX 값 저장
-    df['plus_di'] = adx.iloc[:,1]  # +DI 값 저장
+    df['adx'] = adx.iloc[:,0]      # ADX 값
+    df['plus_di'] = adx.iloc[:,1]  # +DI 값
 
     return df
 
@@ -100,6 +103,7 @@ def get_df(symbol):
 # =====================================================
 # 신호 체크
 # =====================================================
+
 def check_signal(symbol):
 
     global sent_alerts, signal_found
@@ -110,7 +114,7 @@ def check_signal(symbol):
         return
 
     last = df.iloc[-2]
-    prev = df.iloc[-3]  # 이전 캔들
+    prev = df.iloc[-3]
 
     rsi = last['rsi']
     plus_di = last['plus_di']
@@ -123,7 +127,7 @@ def check_signal(symbol):
         return
 
     # =============================
-    # 조건 4개 모두 만족
+    # 조건
     # =============================
 
     if rsi < 30 and plus_di > 36 and adx > 20 and volume_now > volume_prev:
@@ -163,7 +167,7 @@ print("SCAN COINS:", len(symbols))
 
 
 # =====================================================
-# 스캔 실행 함수
+# 스캔 실행
 # =====================================================
 
 def run_scan():
@@ -193,20 +197,3 @@ def run_scan():
 # =====================================================
 
 run_scan()
-
-
-# =====================================================
-# 정각까지 대기
-# =====================================================
-
-while True:
-
-    now = datetime.utcnow()
-
-    seconds_until_next_hour = 3600 - (now.minute * 60 + now.second)
-
-    print("NEXT SCAN IN:", seconds_until_next_hour, "seconds")
-
-    time.sleep(seconds_until_next_hour)
-
-    run_scan()
