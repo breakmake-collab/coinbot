@@ -29,6 +29,10 @@ exchange = ccxt.binance({
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
+if not TELEGRAM_TOKEN or not CHAT_ID:
+    print("⚠️ TELEGRAM_TOKEN 또는 CHAT_ID 설정 안됨. 스크립트 종료")
+    exit(1)
+
 sent_alerts = {}
 sent_messages = set()
 signal_found = False
@@ -53,7 +57,12 @@ def send_telegram(msg):
         "text": msg
     }
 
-    requests.post(url, data=data)
+    try:
+        response = requests.post(url, data=data, timeout=10)
+        if response.status_code != 200:
+            print("⚠️ Telegram 전송 실패:", response.text)
+    except Exception as e:
+        print("⚠️ Telegram 요청 에러:", e)
 
 # =====================================================
 # 선물 전체 코인 불러오기
@@ -178,7 +187,7 @@ def run_scan():
             check_signal(symbol)
 
         except Exception as e:
-            print("ERROR:", symbol)
+            print("ERROR:", symbol, e)
 
     if not signal_found:
         send_telegram("조건에 맞는 코인 없음")
