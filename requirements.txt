@@ -1,8 +1,9 @@
 ccxt==4.5.42
 pandas==2.1.0
-pandas_ta>=0.3.20b0
+pandas-ta-classic
 requests
 python-telegram-bot
+
 
 
 
