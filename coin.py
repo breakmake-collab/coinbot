@@ -7,11 +7,11 @@ import os
 from datetime import datetime, timezone
 
 # =====================================================
-# 1. 비트겟(Bitget) 선물 설정
+# 1. 비트겟(Bitget) 설정
 # =====================================================
 exchange = ccxt.bitget({
     'options': {'defaultType': 'swap'},
-    'enableRateLimit': True,
+    'enableRateLimit': True, # CCXT 자체 속도 제한 권장 준수
 })
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -24,12 +24,28 @@ def send_telegram(msg):
         requests.post(url, data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
     except: pass
 
+def get_symbols():
+    """비트겟에서 활성화된 모든 USDT 선물 종목을 가져옴"""
+    try:
+        markets = exchange.load_markets()
+        # USDT 결제 + 활성화된 선물 종목만 필터링
+        return [
+            m['symbol'] for m in markets.values() 
+            if m['linear'] and m['quote'] == 'USDT' and m['active']
+        ]
+    except Exception as e:
+        print(f"Error loading symbols: {e}")
+        return []
+
 def get_df(symbol):
     try:
-        ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=100)
-        if not ohlcv: return pd.DataFrame()
+        # 데이터 로딩 (비트겟 API 부하를 줄이기 위해 limit 최소화)
+        ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=50)
+        if not ohlcv or len(ohlcv) < 30: return pd.DataFrame()
         
         df = pd.DataFrame(ohlcv, columns=['time','open','high','low','close','volume'])
+        
+        # 지표 계산
         df['rsi'] = ta.rsi(df['close'], length=14)
         adx_data = ta.adx(df['high'], df['low'], df['close'], length=14)
         df['adx'] = adx_data.iloc[:, 0]
@@ -39,70 +55,48 @@ def get_df(symbol):
         return pd.DataFrame()
 
 def run_scan():
-    print(f"===== BITGET 200 ALTS SCAN START ({datetime.now(timezone.utc)}) =====")
+    print(f"===== BITGET ALL-SYMBOLS SCAN START ({datetime.now(timezone.utc)}) =====")
     
-    # 🔥 비트겟 선물 주요 알트코인 200개 (대형주 + 유동성 좋은 중소형주)
-    target_symbols = [
-        'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOTUSDT',
-        'LINKUSDT', 'NEARUSDT', 'SUIUSDT', 'APTUSDT', 'ARBUSDT', 'OPUSDT', 'TIAUSDT', 'SEIUSDT',
-        'STXUSDT', 'INJUSDT', 'LTCUSDT', 'BCHUSDT', 'SHIBUSDT', 'TRXUSDT', 'UNIUSDT', 'PEPEUSDT',
-        'WIFUSDT', 'BONKUSDT', 'FLOKIUSDT', 'JUPUSDT', 'ORDIUSDT', 'FETUSDT', 'RNDRUSDT', 'TAOUSDT',
-        'HBARUSDT', 'ATOMUSDT', 'LUNCUSDT', 'MEMEUSDT', 'BEAMUSDT', 'PYTHUSDT', 'GALAUSDT', 'FILUSDT',
-        'ETCUSDT', 'DYDXUSDT', 'CRVUSDT', 'AAVEUSDT', 'LDOUSDT', 'PENDLEUSDT', 'ENAUSDT', 'WUSDT',
-        'ARUSDT', 'STRKUSDT', 'ANKRUSDT', 'GRTUSDT', 'AGIXUSDT', 'OCEANUSDT', 'SANDUSDT', 'MANAUSDT',
-        'ALGOUSDT', 'EGLDUSDT', 'CHZUSDT', 'AXSUSDT', 'FLOWUSDT', 'ICPUSDT', 'QNTUSDT', 'FTMUSDT',
-        'THETAUSDT', 'MKRUSDT', 'SNXUSDT', 'NEOUSDT', 'IOTAUSDT', 'KAVAUSDT', 'ZILUSDT', 'ENJUSDT',
-        'COMPUSDT', '1INCHUSDT', 'RUNESDT', 'WOOUSDT', 'DYMUSDT', 'METISUSDT', 'BOMEUSDT', 'SLERFUSDT',
-        'MEWUSDT', 'ALTUSDT', 'MANTAUSDT', 'JTOSDT', 'BLURUSDT', 'MINAUSDT', 'RONUSDT', 'AXLUSDT',
-        'IDUSDT', 'EDUUSDT', 'MAVUSDT', 'CYBERUSDT', 'ARKMUSDT', 'GALUSDT', 'ARKUSDT', 'PIXELUSDT',
-        'PORTALUSDT', 'XAIUSDT', 'RONINUSDT', 'ZETASDT', 'JUPUSDT', 'MYROUSDT', 'POPCATUSDT', 'BRETTUSDT',
-        'AEVOUSDT', 'VANRYUSDT', 'ANKRUSDT', 'SCUSDT', 'GLMUSDT', 'RAYUSDT', 'MASKUSDT', 'GNSUSDT',
-        'SUSHIUSDT', 'DYDXUSDT', 'YGGUSDT', 'AGLDUSDT', 'LRCUSDT', 'ONEUSDT', 'ZECUSDT', 'DASHUSDT',
-        'XLMUSDT', 'ONTUSDT', 'VETUSDT', 'IOSTUSDT', 'QTUMUSDT', 'BATUSDT', 'ZRXUSDT', 'KNCUSDT',
-        'SXPUSDT', 'OMGUSDT', 'RENUSDT', 'BALUSDT', 'KNCUSDT', 'RLCUSDT', 'BANDUSDT', 'TOMOUSDT',
-        'REEFUSDT', 'KAVAUSDT', 'SKLUSDT', 'STMXUSDT', 'ANKRUSDT', 'OGNUSDT', 'CTSIUSDT', 'ALPHAUSDT',
-        'LINAUSDT', 'BAKEUSDT', 'BELUSDT', 'TLMUSDT', 'LITUSDT', 'C98USDT', 'MASKUSDT', 'ATAUSDT',
-        'DYDXUSDT', 'GALAUSDT', 'CELOUSDT', 'RAREUSDT', 'IDEXUSDT', 'DARUSDT', 'BNXUSDT', 'MOVRUSDT',
-        'JOEUSDT', 'ACHUSDT', 'API3USDT', 'WOOUSDT', 'TUSDT', 'ASTRUSDT', 'GALUSDT', 'GMTUSDT',
-        'KNCUSDT', 'LDOUSDT', 'LEOUSDT', 'LRCUSDT', 'OKBUSDT', 'XAUTUSDT', 'KASUSDT', 'BEAMUSDT',
-        'ONDOUSDT', 'JUPUSDT', 'ZETASDT', 'STRKUSDT', 'MAVIAUSDT', 'DYMUSDT', 'PIXELUSDT', 'PORTALUSDT'
-    ]
-    
-    # 중복 제거 (리스트 작성 시 실수 방지)
-    target_symbols = list(set(target_symbols))
-    print(f"Scanning {len(target_symbols)} symbols...")
+    # 전체 종목 리스트 가져오기
+    all_symbols = get_symbols()
+    print(f"Total Symbols Found: {len(all_symbols)}")
     
     found_count = 0
-    for symbol in target_symbols:
+    for i, symbol in enumerate(all_symbols):
         df = get_df(symbol)
-        if df.empty or len(df) < 50:
+        if df.empty or len(df) < 20:
             continue
             
-        last = df.iloc[-2]
-        prev = df.iloc[-3]
+        last = df.iloc[-1]   # 현재 진행 중인 봉 (또는 -2 확정봉)
+        prev = df.iloc[-2]
         
         rsi, plus_di, adx = last['rsi'], last['plus_di'], last['adx']
         v_now, v_prev = last['volume'], prev['volume']
 
-        # 조건: RSI < 30 AND +DI > 36 AND ADX >= 20 AND 거래량 증가
+        # 사용자님 조건 적용
         if (not pd.isna(rsi) and rsi < 30 and 
             plus_di > 36 and 
             adx >= 20 and 
             v_now > v_prev):
             
             found_count += 1
-            msg = (f"🚨 [BITGET MEGA SIGNAL]\n"
-                   f"Symbol: {symbol}\n"
+            clean_name = symbol.replace(':USDT', '')
+            msg = (f"🚨 [ALL-MARKET SIGNAL]\n"
+                   f"Symbol: {clean_name}\n"
                    f"Price: {last['close']}\n\n"
                    f"RSI: {round(rsi, 2)}\n"
                    f"ADX: {round(adx, 2)}\n"
                    f"+DI: {round(plus_di, 2)}\n"
-                   f"Vol: Up ✅")
+                   f"Vol: {round(v_now/v_prev, 1)}x Up ✅")
             send_telegram(msg)
             print(f"Signal: {symbol}")
 
-        # 200개 스캔 시 API 부하 방지를 위해 딜레이 조정 (0.15초)
-        time.sleep(0.15)
+        # 종목이 수백 개이므로 요청 간격 조절 (비트겟 IP 차단 방지)
+        # 약 0.1초마다 하나씩 처리
+        if i % 10 == 0:
+            time.sleep(1) 
+        else:
+            time.sleep(0.05)
 
     print(f"===== SCAN END (Total Found: {found_count}) =====")
 
