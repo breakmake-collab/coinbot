@@ -80,7 +80,7 @@ def run_scan():
         # -----------------------------------------------------
         if (not pd.isna(rsi) and rsi < 30 and 
             plus_di > 36 and 
-            adx >= 30 and  # <--- ADX 기준 상향
+            adx >= 25 and  # <--- ADX 기준 상향
             v_now > v_prev):
             
             found_count += 1
@@ -101,3 +101,4 @@ def run_scan():
 
 if __name__ == "__main__":
     run_scan()
+
