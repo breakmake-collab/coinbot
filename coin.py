@@ -7,44 +7,55 @@ import os
 from datetime import datetime, timezone
 
 # =====================================================
-# 1. 바이낸스 연결 (가장 안정적인 설정)
+# 1. 바이낸스 우회 연결 설정 (핵심)
 # =====================================================
-# GitHub Actions의 지역 제한을 피하기 위해 대안 엔드포인트(api1, api2 등)를 사용합니다.
-exchange = ccxt.binance({
-    "options": {"defaultType": "future"},
-    "enableRateLimit": True,
-    "urls": {
-        "api": {
-            "public": "https://fapi.binance.com/fapi", # /v1을 제거하여 ccxt가 직접 붙이게 함
-        }
-    }
-})
+def get_exchange():
+    # 바이낸스에서 공식적으로 제공하는 대체 API 도메인 리스트
+    endpoints = [
+        "https://fapi.binance.com/fapi",
+        "https://fapi1.binance.com/fapi",
+        "https://fapi2.binance.com/fapi",
+        "https://fapi3.binance.com/fapi"
+    ]
+    
+    for url in endpoints:
+        try:
+            ex = ccxt.binance({
+                "options": {"defaultType": "future"},
+                "enableRateLimit": True,
+                "urls": {"api": {"public": url}}
+            })
+            # 연결 테스트: 간단한 서버 시간 요청
+            ex.fetch_time() 
+            print(f"✅ 연결 성공: {url}")
+            return ex
+        except Exception as e:
+            print(f"❌ 연결 실패 ({url}): {e}")
+            continue
+    return None
+
+exchange = get_exchange()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-sent_alerts = {}
-sent_messages = set()
 signal_found = False
 
 def send_telegram(msg):
-    global sent_messages
     if not TELEGRAM_TOKEN or not CHAT_ID: return
-    if msg in sent_messages: return
-    sent_messages.add(msg)
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
         requests.post(url, data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
     except: pass
 
 def get_symbols():
+    if not exchange: return []
     try:
-        # 가벼운 요청으로 마켓 데이터를 먼저 로드
-        markets = exchange.load_markets()
-        symbols = [s for s in markets if markets[s].get("contract") and markets[s].get("quote") == "USDT" and markets[s].get("active")]
-        return symbols
+        # fetch_markets 대신 더 가벼운 fetch_tickers로 시도
+        tickers = exchange.fetch_tickers()
+        return [s for s in tickers if s.endswith('USDT')]
     except Exception as e:
-        print(f"❌ 마켓 로드 실패: {e}")
+        print(f"❌ 종목 로드 실패: {e}")
         return []
 
 def get_df(symbol):
@@ -66,33 +77,30 @@ def check_signal(symbol):
 
     last = df.iloc[-2]
     prev = df.iloc[-3]
-    
     rsi, plus_di, adx = last['rsi'], last['plus_di'], last['adx']
     v_now, v_prev = last['volume'], prev['volume']
 
-    # 테스트를 위해 조건을 매우 느슨하게 (성공 확인용)
-    # 확인 후 원래 조건(rsi < 30 등)으로 복구하세요.
-    if rsi < 70: 
-        msg = f"✅ TEST SIGNAL: {symbol}\nRSI: {round(rsi,2)}"
+    # --- 기존 사용자 조건으로 복구 ---
+    if rsi < 30 and plus_di > 36 and adx > 20 and v_now > v_prev:
+        msg = f"🚀 SIGNAL FOUND\n\n코인 : {symbol}\n가격 : {last['close']}\n\nRSI : {round(rsi, 2)}\n+DI : {round(plus_di, 2)}\nADX : {round(adx, 2)}\nVolume 증가"
         send_telegram(msg)
         signal_found = True
 
 def run_scan():
     global signal_found
-    signal_found = False
-    print(f"===== SCAN START (UTC: {datetime.now(timezone.utc)}) =====")
-    
-    symbols = get_symbols()
-    print(f"SCAN COINS: {len(symbols)}") # 여기서 숫자가 0보다 커야 합니다.
-
-    if not symbols:
-        send_telegram("❌ 코인 목록을 가져오지 못했습니다. (API 차단 가능성)")
+    if not exchange:
+        send_telegram("❌ 모든 바이낸스 API 서버에 접속할 수 없습니다. (GitHub IP 전면 차단)")
         return
 
-    # 상위 20개만 먼저 테스트 (전체 다 돌면 시간이 오래 걸림)
-    for i, symbol in enumerate(symbols[:20]): 
-        check_signal(symbol)
-        time.sleep(0.1)
+    print(f"===== SCAN START ({datetime.now(timezone.utc)}) =====")
+    symbols = get_symbols()
+    print(f"SCAN COINS: {len(symbols)}")
+
+    for i, symbol in enumerate(symbols):
+        try:
+            check_signal(symbol)
+            if i % 10 == 0: time.sleep(0.1)
+        except: continue
 
     if not signal_found:
         send_telegram("🔍 조건에 맞는 코인이 없습니다.")
