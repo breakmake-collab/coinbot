@@ -44,6 +44,9 @@ def send_telegram(msg):
 
     global sent_messages
 
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        return
+
     if msg in sent_messages:
         return
 
@@ -87,8 +90,11 @@ def get_symbols():
 # =====================================================
 
 def get_df(symbol):
-
-    ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=120)
+    try:
+        ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=120)
+    except Exception as e:
+        print("⚠️ Binance API 오류:", symbol, e)
+        return pd.DataFrame()  # 임시 테스트: 오류 시 빈 데이터프레임 반환
 
     df = pd.DataFrame(
         ohlcv,
@@ -198,4 +204,3 @@ def run_scan():
 # =====================================================
 
 run_scan()
-
