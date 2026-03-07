@@ -37,14 +37,14 @@ sent_messages = set()
 signal_found = False
 
 # =====================================================
-# 텔레그램 메시지 보내기
+# 텔레그램 메시지 보내기 (안전하게)
 # =====================================================
 
 def send_telegram(msg):
-
     global sent_messages
 
     if not TELEGRAM_TOKEN or not CHAT_ID:
+        print("⚠️ Telegram 설정 없음:", msg)
         return
 
     if msg in sent_messages:
@@ -53,11 +53,7 @@ def send_telegram(msg):
     sent_messages.add(msg)
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-
-    data = {
-        "chat_id": CHAT_ID,
-        "text": msg
-    }
+    data = {"chat_id": CHAT_ID, "text": msg}
 
     try:
         response = requests.post(url, data=data, timeout=10)
@@ -71,18 +67,17 @@ def send_telegram(msg):
 # =====================================================
 
 def get_symbols():
-
-    markets = exchange.load_markets()
+    try:
+        markets = exchange.load_markets()
+    except Exception as e:
+        print("⚠️ Binance 마켓 불러오기 실패:", e)
+        return []
 
     symbols = []
-
     for s in markets:
-
         market = markets[s]
-
-        if market["contract"] and market["quote"] == "USDT" and market["active"]:
+        if market.get("contract") and market.get("quote") == "USDT" and market.get("active"):
             symbols.append(s)
-
     return symbols
 
 # =====================================================
@@ -93,21 +88,14 @@ def get_df(symbol):
     try:
         ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=120)
     except Exception as e:
-        print("⚠️ Binance API 오류:", symbol, e)
-        return pd.DataFrame()  # 임시 테스트: 오류 시 빈 데이터프레임 반환
+        print("⚠️ Binance OHLCV 불러오기 실패:", symbol, e)
+        return pd.DataFrame()
 
-    df = pd.DataFrame(
-        ohlcv,
-        columns=['time','open','high','low','close','volume']
-    )
-
+    df = pd.DataFrame(ohlcv, columns=['time','open','high','low','close','volume'])
     df['rsi'] = ta.rsi(df['close'], length=14)
-
     adx = ta.adx(df['high'], df['low'], df['close'], length=14)
-
     df['adx'] = adx.iloc[:,0]      # ADX 값
     df['plus_di'] = adx.iloc[:,1]  # +DI 값
-
     return df
 
 # =====================================================
@@ -115,11 +103,9 @@ def get_df(symbol):
 # =====================================================
 
 def check_signal(symbol):
-
     global sent_alerts, signal_found
 
     df = get_df(symbol)
-
     if len(df) < 50:
         return
 
@@ -129,7 +115,6 @@ def check_signal(symbol):
     rsi = last['rsi']
     plus_di = last['plus_di']
     adx = last['adx']
-
     volume_now = last['volume']
     volume_prev = prev['volume']
 
@@ -139,16 +124,12 @@ def check_signal(symbol):
     # =============================
     # 조건
     # =============================
-
     if rsi < 30 and plus_di > 36 and adx > 20 and volume_now > volume_prev:
-
         now = time.time()
-
         if symbol in sent_alerts and now - sent_alerts[symbol] < 3600:
             return
 
         sent_alerts[symbol] = now
-
         price = last['close']
 
         msg = f"""🚀 SIGNAL
@@ -161,9 +142,7 @@ RSI : {round(rsi,2)}
 ADX : {round(adx,2)}
 Volume 증가
 """
-
         send_telegram(msg)
-
         signal_found = True
 
 # =====================================================
@@ -171,7 +150,6 @@ Volume 증가
 # =====================================================
 
 symbols = get_symbols()
-
 print("SCAN COINS:", len(symbols))
 
 # =====================================================
@@ -179,18 +157,13 @@ print("SCAN COINS:", len(symbols))
 # =====================================================
 
 def run_scan():
-
     global signal_found
-
     signal_found = False
 
     print("SCAN START")
-
     for symbol in symbols:
-
         try:
             check_signal(symbol)
-
         except Exception as e:
             print("ERROR:", symbol, e)
 
@@ -200,7 +173,12 @@ def run_scan():
     print("SCAN END")
 
 # =====================================================
-# 처음 실행 시 1번 스캔 (확인용)
+# 처음 실행 시 1번 스캔 (임시 테스트용)
 # =====================================================
 
-run_scan()
+try:
+    run_scan()
+    # 임시 테스트 메시지
+    send_telegram("⚠️ 임시 테스트: 스크립트 실행 확인")
+except Exception as e:
+    print("⚠️ 스캔 실행 중 에러:", e)
