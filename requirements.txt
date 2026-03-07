@@ -1,9 +1,12 @@
-numpy==1.26.2
-pandas==2.1.0
+# coin.py 실행에 필요한 라이브러리
 ccxt==4.5.42
-pandas-ta-classic
+pandas==2.1.0
 requests
+
+# pandas-ta는 GitHub 소스로 설치
+git+https://github.com/twopirllc/pandas-ta.git
 python-telegram-bot
+
 
 
 
