@@ -88,7 +88,7 @@ def check_signal(symbol):
 
     if pd.isna(rsi) or pd.isna(plus_di) or pd.isna(adx): return
 
-    if rsi < 30 and plus_di > 36 and adx > 20 and v_now > v_prev:
+    if rsi < 70:
         now = time.time()
         if symbol in sent_alerts and now - sent_alerts[symbol] < 3600: return
         sent_alerts[symbol] = now
@@ -115,3 +115,4 @@ def run_scan():
 
 if __name__ == "__main__":
     run_scan()
+
