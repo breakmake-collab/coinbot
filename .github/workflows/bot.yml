@@ -8,9 +8,6 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    env:
-      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-      CHAT_ID: ${{ secrets.CHAT_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -20,21 +17,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
-
-      - name: Check and install dependencies
-        run: |
-          if [ -f "requirements.txt" ]; then
-            echo "requirements.txt found. Installing dependencies..."
-            pip install --no-cache-dir -r requirements.txt || echo "⚠️ Dependency installation failed."
-          else
-            echo "⚠️ requirements.txt not found. Skipping dependency installation."
-          fi
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
       - name: Run bot
-        run: |
-          python coin.py || \
-          curl -s -X POST https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage \
-            -d chat_id=${CHAT_ID} \
-            -d text="⚠️ Crypto Signal Bot 실행 실패!"
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python coin.py
