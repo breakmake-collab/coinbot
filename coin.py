@@ -18,11 +18,15 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 def send_telegram(msg):
-    if not TELEGRAM_TOKEN or not CHAT_ID: return
+    if not TELEGRAM_TOKEN or not CHAT_ID: 
+        print("⚠️ 환경변수 설정 오류 (Token 또는 ID 없음)")
+        return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        requests.post(url, data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
-    except: pass
+        response = requests.post(url, data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
+        print(f"Telegram 전송 결과: {response.status_code}")
+    except Exception as e:
+        print(f"⚠️ Telegram 전송 에러: {e}")
 
 def get_df(symbol):
     try:
@@ -40,9 +44,9 @@ def get_df(symbol):
         return pd.DataFrame()
 
 def run_scan():
-    print(f"===== MEGA 100 ALTS SCAN START ({datetime.now(timezone.utc)}) =====")
+    print(f"===== TEST SCAN START ({datetime.now(timezone.utc)}) =====")
     
-    # 🔥 바이비트 선물 주요 알트코인 100개 리스트
+    # 100개 알트코인 리스트
     target_symbols = [
         'BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT', 'XRP/USDT:USDT', 'DOGE/USDT:USDT',
         'ADA/USDT:USDT', 'AVAX/USDT:USDT', 'DOT/USDT:USDT', 'LINK/USDT:USDT', 'MATIC/USDT:USDT',
@@ -54,44 +58,45 @@ def run_scan():
         'JUP/USDT:USDT', 'ORDI/USDT:USDT', '1000LUNC/USDT:USDT', 'MEME/USDT:USDT', 'BEAM/USDT:USDT',
         'PYTH/USDT:USDT', 'GALA/USDT:USDT', 'FIL/USDT:USDT', 'ETC/USDT:USDT', 'DYDX/USDT:USDT',
         'CRV/USDT:USDT', 'AAVE/USDT:USDT', 'LDO/USDT:USDT', 'PENDLE/USDT:USDT', 'ENA/USDT:USDT',
-        'W/USDT:USDT', 'AR/USDT:USDT', 'STRK/USDT:USDT', 'TIA/USDT:USDT', 'ANKR/USDT:USDT',
-        'GRT/USDT:USDT', 'AGIX/USDT:USDT', 'OCEAN/USDT:USDT', 'SAND/USDT:USDT', 'MANA/USDT:USDT',
-        'ALGO/USDT:USDT', 'EGLD/USDT:USDT', 'CHZ/USDT:USDT', 'AXS/USDT:USDT', 'FLOW/USDT:USDT',
-        'ICP/USDT:USDT', 'QNT/USDT:USDT', 'FTM/USDT:USDT', 'THETA/USDT:USDT', 'MKR/USDT:USDT',
-        'SNX/USDT:USDT', 'NEO/USDT:USDT', 'IOTA/USDT:USDT', 'KAVA/USDT:USDT', 'ZIL/USDT:USDT',
-        'ENJ/USDT:USDT', 'COMP/USDT:USDT', '1INCH/USDT:USDT', 'RUNE/USDT:USDT', 'WOO/USDT:USDT',
-        'DYM/USDT:USDT', 'METIS/USDT:USDT', 'BOME/USDT:USDT', 'SLERF/USDT:USDT', 'MEW/USDT:USDT',
-        'ALT/USDT:USDT', 'MANTA/USDT:USDT', 'PYTH/USDT:USDT', 'JTO/USDT:USDT', 'BLUR/USDT:USDT',
-        'MINA/USDT:USDT', 'RON/USDT:USDT', 'AXL/USDT:USDT', 'ID/USDT:USDT', 'EDU/USDT:USDT',
-        'MAV/USDT:USDT', 'CYBER/USDT:USDT', 'ARKM/USDT:USDT', 'GAL/USDT:USDT', 'ARK/USDT:USDT'
+        'W/USDT:USDT', 'AR/USDT:USDT', 'STRK/USDT:USDT', 'ANKR/USDT:USDT', 'GRT/USDT:USDT',
+        'AGIX/USDT:USDT', 'OCEAN/USDT:USDT', 'SAND/USDT:USDT', 'MANA/USDT:USDT', 'ALGO/USDT:USDT',
+        'EGLD/USDT:USDT', 'CHZ/USDT:USDT', 'AXS/USDT:USDT', 'FLOW/USDT:USDT', 'ICP/USDT:USDT',
+        'QNT/USDT:USDT', 'FTM/USDT:USDT', 'THETA/USDT:USDT', 'MKR/USDT:USDT', 'SNX/USDT:USDT',
+        'NEO/USDT:USDT', 'IOTA/USDT:USDT', 'KAVA/USDT:USDT', 'ZIL/USDT:USDT', 'ENJ/USDT:USDT',
+        'COMP/USDT:USDT', '1INCH/USDT:USDT', 'RUNE/USDT:USDT', 'WOO/USDT:USDT', 'DYM/USDT:USDT',
+        'METIS/USDT:USDT', 'BOME/USDT:USDT', 'SLERF/USDT:USDT', 'MEW/USDT:USDT', 'ALT/USDT:USDT',
+        'MANTA/USDT:USDT', 'JTO/USDT:USDT', 'BLUR/USDT:USDT', 'MINA/USDT:USDT', 'RON/USDT:USDT',
+        'AXL/USDT:USDT', 'ID/USDT:USDT', 'EDU/USDT:USDT', 'MAV/USDT:USDT', 'CYBER/USDT:USDT',
+        'ARKM/USDT:USDT', 'GAL/USDT:USDT', 'ARK/USDT:USDT', 'PIXEL/USDT:USDT', 'STRK/USDT:USDT'
     ]
     
-    print(f"Total Target Alts: {len(target_symbols)}")
+    print(f"Target Coins: {len(target_symbols)}")
     found_count = 0
 
     for symbol in target_symbols:
         df = get_df(symbol)
-        if df.empty or len(df) < 50: continue
+        if df.empty or len(df) < 50: 
+            continue
             
-        last = df.iloc[-2]
-        prev = df.iloc[-3]
-        
-        rsi, plus_di, adx = last['rsi'], last['plus_di'], last['adx']
-        v_now, v_prev = last['volume'], prev['volume']
+        rsi = df.iloc[-2]['rsi']
 
-        # 사용자님 조건 (RSI < 30, +DI > 36, ADX > 20, 거래량 증가)
-        if not pd.isna(rsi) and rsi < 30 and plus_di > 36 and adx > 20 and v_now > v_prev:
+        # 🔥 테스트를 위해 RSI 70 미만이면 무조건 발송 (거의 모든 코인 해당)
+        if not pd.isna(rsi) and rsi < 70:
             found_count += 1
             clean_name = symbol.split('/')[0]
-            msg = (f"🚨 [MEGA SIGNAL]\n코인: {clean_name}\n"
-                   f"RSI: {round(rsi, 2)} / ADX: {round(adx, 2)}\n"
-                   f"+DI: {round(plus_di, 2)}\n거래량 증가 ✅")
+            msg = f"✅ [TEST SUCCESS]\n코인: {clean_name}\nRSI: {round(rsi, 2)}\n통신 정상 확인!"
             send_telegram(msg)
-            print(f"Signal: {clean_name}")
+            print(f"Signal Found: {clean_name}")
+            
+            # 텔레그램 도배 방지: 테스트 시 2개만 오면 중단
+            if found_count >= 2: 
+                break
 
-        # 100개나 되므로 API 속도 제한을 위해 약간의 대기시간 추가
         time.sleep(0.12)
 
+    if found_count == 0:
+        send_telegram("🔍 테스트 조건(RSI 70)에도 코인이 없습니다. API 확인 필요.")
+    
     print(f"===== SCAN END (Found: {found_count}) =====")
 
 if __name__ == "__main__":
