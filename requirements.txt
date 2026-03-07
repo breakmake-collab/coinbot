@@ -1,8 +1,10 @@
-ccxt==4.5.42
+numpy==1.26.2
 pandas==2.1.0
+ccxt==4.5.42
 pandas-ta-classic
 requests
 python-telegram-bot
+
 
 
 
