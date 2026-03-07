@@ -23,11 +23,11 @@ exchange = ccxt.binance({
 })
 
 # =====================================================
-# 텔레그램 정보 (직접 입력)
+# 텔레그램 정보 (환경변수)
 # =====================================================
 
-TELEGRAM_TOKEN = "여기에_텔레그램_토큰_입력"
-CHAT_ID = "여기에_챗아이디_입력"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 sent_alerts = {}
 sent_messages = set()
