@@ -1,9 +1,9 @@
-ccxt==4.2.82
-pandas==2.1.0
-numpy<2.0.0
-ta==0.11.0
+ccxt
+pandas
+pandas_ta
 requests
 python-telegram-bot
+
 
 
 
