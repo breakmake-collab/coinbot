@@ -30,8 +30,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 if not TELEGRAM_TOKEN or not CHAT_ID:
-    print("⚠️ TELEGRAM_TOKEN 또는 CHAT_ID 설정 안됨. 스크립트 종료")
-    exit(1)
+    print("⚠️ TELEGRAM_TOKEN 또는 CHAT_ID 설정 안됨. Telegram 메시지는 전송되지 않습니다.")
 
 sent_alerts = {}
 sent_messages = set()
@@ -199,3 +198,4 @@ def run_scan():
 # =====================================================
 
 run_scan()
+
