@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 # =====================================================
 exchange = ccxt.bitget({
     'options': {'defaultType': 'swap'},
-    'enableRateLimit': True, # CCXT 자체 속도 제한 권장 준수
+    'enableRateLimit': True,
 })
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -25,10 +25,9 @@ def send_telegram(msg):
     except: pass
 
 def get_symbols():
-    """비트겟에서 활성화된 모든 USDT 선물 종목을 가져옴"""
     try:
         markets = exchange.load_markets()
-        # USDT 결제 + 활성화된 선물 종목만 필터링
+        # USDT 선물 + 활성 종목만 필터링
         return [
             m['symbol'] for m in markets.values() 
             if m['linear'] and m['quote'] == 'USDT' and m['active']
@@ -39,15 +38,17 @@ def get_symbols():
 
 def get_df(symbol):
     try:
-        # 데이터 로딩 (비트겟 API 부하를 줄이기 위해 limit 최소화)
-        ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=50)
+        # 데이터 효율을 위해 60개만 호출
+        ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=60)
         if not ohlcv or len(ohlcv) < 30: return pd.DataFrame()
         
         df = pd.DataFrame(ohlcv, columns=['time','open','high','low','close','volume'])
         
-        # 지표 계산
+        # 지표 계산 (RSI 14, ADX 14)
         df['rsi'] = ta.rsi(df['close'], length=14)
         adx_data = ta.adx(df['high'], df['low'], df['close'], length=14)
+        
+        # pandas-ta ADX 출력값 추출 (컬럼명 유연하게 대응)
         df['adx'] = adx_data.iloc[:, 0]
         df['plus_di'] = adx_data.iloc[:, 1]
         return df
@@ -55,50 +56,48 @@ def get_df(symbol):
         return pd.DataFrame()
 
 def run_scan():
-    print(f"===== BITGET ALL-SYMBOLS SCAN START ({datetime.now(timezone.utc)}) =====")
+    print(f"===== BITGET ALL-MARKET SCAN (ADX 30+) START ({datetime.now(timezone.utc)}) =====")
     
-    # 전체 종목 리스트 가져오기
     all_symbols = get_symbols()
-    print(f"Total Symbols Found: {len(all_symbols)}")
+    print(f"Total Symbols to scan: {len(all_symbols)}")
     
     found_count = 0
     for i, symbol in enumerate(all_symbols):
         df = get_df(symbol)
-        if df.empty or len(df) < 20:
-            continue
+        if df.empty or len(df) < 20: continue
             
-        last = df.iloc[-1]   # 현재 진행 중인 봉 (또는 -2 확정봉)
-        prev = df.iloc[-2]
+        last = df.iloc[-2]  # 확정봉 기준
+        prev = df.iloc[-3]
         
-        rsi, plus_di, adx = last['rsi'], last['plus_di'], last['adx']
-        v_now, v_prev = last['volume'], prev['volume']
+        rsi = last['rsi']
+        plus_di = last['plus_di']
+        adx = last['adx']
+        v_now = last['volume']
+        v_prev = prev['volume']
 
-        # 사용자님 조건 적용
+        # -----------------------------------------------------
+        # 🔥 업그레이드된 조건: ADX 30 이상 (강력한 추세)
+        # -----------------------------------------------------
         if (not pd.isna(rsi) and rsi < 30 and 
             plus_di > 36 and 
-            adx >= 20 and 
+            adx >= 30 and  # <--- ADX 기준 상향
             v_now > v_prev):
             
             found_count += 1
             clean_name = symbol.replace(':USDT', '')
-            msg = (f"🚨 [ALL-MARKET SIGNAL]\n"
+            msg = (f"🎯 [POWER TREND SIGNAL]\n"
                    f"Symbol: {clean_name}\n"
-                   f"Price: {last['close']}\n\n"
-                   f"RSI: {round(rsi, 2)}\n"
-                   f"ADX: {round(adx, 2)}\n"
+                   f"RSI: {round(rsi, 2)} (Oversold)\n"
+                   f"ADX: {round(adx, 2)} (Strong!)\n"
                    f"+DI: {round(plus_di, 2)}\n"
-                   f"Vol: {round(v_now/v_prev, 1)}x Up ✅")
+                   f"Vol: {round(v_now/v_prev, 1)}x Up")
             send_telegram(msg)
-            print(f"Signal: {symbol}")
+            print(f"Found Strong Signal: {symbol}")
 
-        # 종목이 수백 개이므로 요청 간격 조절 (비트겟 IP 차단 방지)
-        # 약 0.1초마다 하나씩 처리
-        if i % 10 == 0:
-            time.sleep(1) 
-        else:
-            time.sleep(0.05)
+        # 전체 종목 스캔을 위한 속도 조절 (Bitget 가이드라인 준수)
+        time.sleep(0.1) 
 
-    print(f"===== SCAN END (Total Found: {found_count}) =====")
+    print(f"===== SCAN END (Found: {found_count}) =====")
 
 if __name__ == "__main__":
     run_scan()
