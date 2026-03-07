@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: '3.10'
       - name: Install dependencies
-        run: pip install ccxt pandas pandas_ta requests
+        run: pip install -r requirements.txt
       - name: Run bot
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
