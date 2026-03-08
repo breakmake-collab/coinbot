@@ -56,14 +56,15 @@ def get_df(symbol):
     except: return None
 
 def run_scan():
-    print(f"===== 빡센 조건 스캔 시작: {datetime.now(timezone.utc).strftime('%H:%M:%S')} (UTC) =====")
+    now_utc = datetime.now(timezone.utc)
+    print(f"===== 빡센 조건 스캔 시작: {now_utc.strftime('%H:%M:%S')} (UTC) =====")
     
     symbols = get_symbols()
     found_count = 0
     
     # 메모리 정리 (24시간 지난 신호 삭제)
-    current_time = time.time() * 1000
-    expired_ids = [sid for sid, timestamp in sent_signals.items() if current_time - timestamp > 86400000]
+    current_time_ms = time.time() * 1000
+    expired_ids = [sid for sid, timestamp in sent_signals.items() if current_time_ms - timestamp > 86400000]
     for eid in expired_ids: del sent_signals[eid]
 
     for symbol in symbols:
@@ -79,11 +80,14 @@ def run_scan():
         prev_price = prev['close']
         candle_time = last['time']
 
+        # [추가] 지연 시간 계산 (현재 분 - 0분)
+        # 1시간 봉은 정각에 마감되므로 현재 '분'이 곧 지연된 시간입니다.
+        delay_min = now_utc.minute
+
         # [오른쪽 3번 추가] 가격 변화율 계산 (비율)
         price_change_pct = ((curr_price - prev_price) / prev_price) * 100
 
         # 🎯 [수정] 빡센 전략 조건 (RSI 25미만, ADX 30이상, +DI 40이상)
-        # 거래량 증가 조건(v_now > v_prev)은 유효한 수급 확인을 위해 유지했습니다.
         if (not pd.isna(rsi) and rsi < 25 and 
             plus_di >= 40 and 
             adx >= 30 and 
@@ -91,7 +95,7 @@ def run_scan():
             
             signal_id = f"{symbol}_{candle_time}"
             if signal_id not in sent_signals:
-                sent_signals[signal_id] = candle_time
+                sent_signals[signal_id] = current_time_ms
                 found_count += 1
                 
                 # [왼쪽 3번 추가] 손절(SL) 및 익절(TP) 계산 (ATR 2배 적용)
@@ -100,8 +104,9 @@ def run_scan():
                 
                 clean_name = symbol.split(':')[0].split('/')[0]
 
-                # 메시지 구성 (빡센 조건 강조)
-                msg = (f"🔥 *[강력 반등 포착: {clean_name}]*\n\n"
+                # 메시지 구성 (지연 시간 정보 포함)
+                msg = (f"🔥 *[코인이름: {clean_name}]*\n"
+                       f"⏱ **지연 시간:** 정각 대비 {delay_min}분 경과\n\n"
                        f"💵 **현재가:** {curr_price} ({round(price_change_pct, 2)}%)\n"
                        f"━━━━━━━━━━━━━━\n"
                        f"📊 **필터링된 지표**\n"
