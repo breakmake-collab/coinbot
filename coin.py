@@ -17,113 +17,122 @@ exchange = ccxt.bitget({
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-sent_signals = []
+# 중복 알림 방지용 (24시간 관리)
+sent_signals = {}
 
 def send_telegram(msg):
     if not TELEGRAM_TOKEN or not CHAT_ID: return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        # 마크다운 지원을 위해 parse_mode 추가
-        requests.post(url, data={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}, timeout=10)
+        requests.post(url, data={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}, timeout=5)
     except: pass
 
 def get_symbols():
     try:
         markets = exchange.load_markets()
         return [
-            m['symbol'] for m in markets.values() 
-            if m['linear'] and m['quote'] == 'USDT' and m['active']
+            symbol for symbol, m in markets.items() 
+            if m.get('linear') and m.get('quote') == 'USDT' and m.get('active')
         ]
-    except Exception as e:
-        print(f"Error loading symbols: {e}")
-        return []
+    except: return []
 
 def get_df(symbol):
-    """1시간봉 데이터 수집 및 지표 계산 (ATR 추가)"""
     try:
         ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=100)
-        if not ohlcv or len(ohlcv) < 50: return pd.DataFrame()
+        if not ohlcv or len(ohlcv) < 50: return None
         
         df = pd.DataFrame(ohlcv, columns=['time','open','high','low','close','volume'])
         
-        # 지표 계산 (RSI 14, ADX 14)
+        # 지표 계산 (RSI, ADX, ATR)
         df['rsi'] = ta.rsi(df['close'], length=14)
         adx_df = ta.adx(df['high'], df['low'], df['close'], length=14)
-        
         df['adx'] = adx_df.iloc[:, 0]
         df['plus_di'] = adx_df.iloc[:, 1]
         
-        # [추가] ATR 계산 (손절/익절 가이드라인용)
+        # [왼쪽 3번 추가] ATR 계산 (변동성 기반 손절/익절용)
         df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
         
         return df
-    except:
-        return pd.DataFrame()
+    except: return None
 
 def run_scan():
-    print(f"===== BITGET 1H FULL SCAN START ({datetime.now(timezone.utc)}) =====")
+    now_utc = datetime.now(timezone.utc)
+    delay_min = now_utc.minute  # 현재 '분' 계산
     
-    symbols = get_symbols()
-    print(f"Total Symbols: {len(symbols)}")
-    
-    found_count = 0
-    for i, symbol in enumerate(symbols):
-        df = get_df(symbol)
-        if df.empty or len(df) < 30: continue
-            
-        last = df.iloc[-2] 
-        prev = df.iloc[-3]
-        
-        candle_time = last['time'] 
-        
-        rsi = last['rsi']
-        plus_di = last['plus_di']
-        adx = last['adx']
-        atr = last['atr']
-        v_now = last['volume']
-        v_prev = prev['volume']
-        curr_price = last['close']
+    print(f"===== 빡센 조건 스캔 시작: {now_utc.strftime('%H:%M:%S')} (UTC) =====")
 
-        # 🎯 기존 최적화 타점 조건 유지
-        if (not pd.isna(rsi) and rsi < 30 and 
-            plus_di > 36 and 
-            adx >= 25 and 
+    # 🎯 [추가] 30분 초과 시 스캔 건너뛰고 메시지 전송
+    if delay_min >= 30:
+        skip_msg = f"⏳ **스캔 건너뜀:** 현재 {delay_min}분입니다. (30분 초과)\n이미 타점이 지났을 확률이 높아 다음 정각 봉을 기다립니다."
+        send_telegram(skip_msg)
+        print(f"건너뜀 알림 발송: {delay_min}분")
+        return
+
+    symbols = get_symbols()
+    found_count = 0
+    
+    # 메모리 정리 (24시간 지난 신호 삭제)
+    current_time_ms = time.time() * 1000
+    expired_ids = [sid for sid, timestamp in sent_signals.items() if current_time_ms - timestamp > 86400000]
+    for eid in expired_ids: del sent_signals[eid]
+
+    for symbol in symbols:
+        df = get_df(symbol)
+        if df is None or len(df) < 5: continue
+            
+        last = df.iloc[-2]   # 직전 확정봉
+        prev = df.iloc[-3]   # 그 이전봉
+        
+        rsi, plus_di, adx, atr = last['rsi'], last['plus_di'], last['adx'], last['atr']
+        v_now, v_prev = last['volume'], prev['volume']
+        curr_price = last['close']
+        prev_price = prev['close']
+        candle_time = last['time']
+
+        # [오른쪽 3번 추가] 가격 변화율 계산 (비율)
+        price_change_pct = ((curr_price - prev_price) / prev_price) * 100
+
+        # 🎯 [수정] 빡센 전략 조건 (RSI 25미만, ADX 30이상, +DI 40이상)
+        if (not pd.isna(rsi) and rsi < 25 and 
+            plus_di >= 40 and 
+            adx >= 30 and 
             v_now > v_prev):
             
             signal_id = f"{symbol}_{candle_time}"
             if signal_id not in sent_signals:
+                sent_signals[signal_id] = current_time_ms
                 found_count += 1
-                sent_signals.append(signal_id)
                 
-                # [추가] 손절(SL) 및 익절(TP) 계산 (ATR의 2배 적용)
+                # [왼쪽 3번 추가] 손절(SL) 및 익절(TP) 계산 (ATR 2배 적용)
                 tp_price = curr_price + (atr * 2)
                 sl_price = curr_price - (atr * 2)
                 
-                clean_name = symbol.split(':')[0]
-                # 트레이딩뷰 및 비트겟 링크 추가
-                tv_url = f"https://www.tradingview.com/chart/?symbol=BITGET:{clean_name}.P"
+                clean_name = symbol.split(':')[0].split('/')[0]
 
-                msg = (f"🚨 *[1H SIGNAL FOUND]*\n\n"
-                       f"**Symbol:** {clean_name}\n"
-                       f"**Price:** {curr_price}\n"
-                       f"---指标---\n"
-                       f"RSI: {round(rsi, 2)}\n"
-                       f"ADX: {round(adx, 2)} (+DI: {round(plus_di, 2)})\n"
-                       f"Vol: {round(v_now/v_prev, 1)}x Up ✅\n"
-                       f"---Guide---\n"
-                       f"🟢 **TP (Target):** {round(tp_price, 4)}\n"
-                       f"🔴 **SL (Stop):** {round(sl_price, 4)}\n\n"
-                       f"🔗 [TradingView]({tv_url})")
+                # 메시지 구성 (지연 시간 정보 포함)
+                msg = (f"🔥 *[코인이름: {clean_name}]*\n"
+                       f"⏱ **지연 시간:** 정각 대비 {delay_min}분 경과\n\n"
+                       f"💵 **현재가:** {curr_price} ({round(price_change_pct, 2)}%)\n"
+                       f"━━━━━━━━━━━━━━\n"
+                       f"📊 **필터링된 지표**\n"
+                       f"• RSI: {round(rsi, 2)} (매우 낮음 ⚠️)\n"
+                       f"• ADX: {round(adx, 2)} (강한 추세)\n"
+                       f"• +DI: {round(plus_di, 2)} (에너지 폭발)\n"
+                       f"• 거래량: {round(v_now/v_prev, 1)}배 증가 ✅\n"
+                       f"━━━━━━━━━━━━━━\n"
+                       f"🛡 **매매 가이드 (ATR)**\n"
+                       f"🟢 **익절가:** {round(tp_price, 4)}\n"
+                       f"🔴 **손절가:** {round(sl_price, 4)}")
                 
                 send_telegram(msg)
-                print(f"Signal Sent: {symbol}")
+                print(f"강력 신호 발송: {clean_name}")
 
-        time.sleep(0.12)
+        time.sleep(0.1)
 
-    print(f"===== SCAN END (Total Found: {found_count}) =====")
+    print(f"===== 스캔 종료 (발견: {found_count}) =====")
 
 if __name__ == "__main__":
-    while True: # 무한 반복 추가 (필요 없으면 제거)
+    while True:
         run_scan()
-        print("Waiting for next scan... (60 min)")
-        time.sleep(3600) # 1시간마다 반복
+        time.sleep(3600)
+
