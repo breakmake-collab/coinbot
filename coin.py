@@ -56,7 +56,7 @@ def get_df(symbol):
     except: return None
 
 def run_scan():
-    print(f"===== 스캔 시작: {datetime.now(timezone.utc).strftime('%H:%M:%S')} (UTC) =====")
+    print(f"===== 빡센 조건 스캔 시작: {datetime.now(timezone.utc).strftime('%H:%M:%S')} (UTC) =====")
     
     symbols = get_symbols()
     found_count = 0
@@ -82,10 +82,11 @@ def run_scan():
         # [오른쪽 3번 추가] 가격 변화율 계산 (비율)
         price_change_pct = ((curr_price - prev_price) / prev_price) * 100
 
-        # 🎯 전략 조건 검사 (기존 유지)
-        if (not pd.isna(rsi) and rsi < 30 and 
-            plus_di > 36 and 
-            adx >= 25 and 
+        # 🎯 [수정] 빡센 전략 조건 (RSI 25미만, ADX 30이상, +DI 40이상)
+        # 거래량 증가 조건(v_now > v_prev)은 유효한 수급 확인을 위해 유지했습니다.
+        if (not pd.isna(rsi) and rsi < 25 and 
+            plus_di >= 40 and 
+            adx >= 30 and 
             v_now > v_prev):
             
             signal_id = f"{symbol}_{candle_time}"
@@ -99,13 +100,14 @@ def run_scan():
                 
                 clean_name = symbol.split(':')[0].split('/')[0]
 
-                # 메시지 구성 (한국어 + 비율 + 가이드라인)
-                msg = (f"🚨 *[1H 포착: {clean_name}]*\n\n"
+                # 메시지 구성 (빡센 조건 강조)
+                msg = (f"🔥 *[강력 반등 포착: {clean_name}]*\n\n"
                        f"💵 **현재가:** {curr_price} ({round(price_change_pct, 2)}%)\n"
                        f"━━━━━━━━━━━━━━\n"
-                       f"📊 **지표 현황**\n"
-                       f"• RSI: {round(rsi, 2)}\n"
-                       f"• ADX: {round(adx, 2)} (+DI: {round(plus_di, 2)})\n"
+                       f"📊 **필터링된 지표**\n"
+                       f"• RSI: {round(rsi, 2)} (매우 낮음 ⚠️)\n"
+                       f"• ADX: {round(adx, 2)} (강한 추세)\n"
+                       f"• +DI: {round(plus_di, 2)} (에너지 폭발)\n"
                        f"• 거래량: {round(v_now/v_prev, 1)}배 증가 ✅\n"
                        f"━━━━━━━━━━━━━━\n"
                        f"🛡 **매매 가이드 (ATR)**\n"
@@ -113,7 +115,7 @@ def run_scan():
                        f"🔴 **손절가:** {round(sl_price, 4)}")
                 
                 send_telegram(msg)
-                print(f"신호 발송: {clean_name}")
+                print(f"강력 신호 발송: {clean_name}")
 
         time.sleep(0.1)
 
@@ -122,5 +124,4 @@ def run_scan():
 if __name__ == "__main__":
     while True:
         run_scan()
-        # 다음 스캔까지 대기 (1시간)
         time.sleep(3600)
