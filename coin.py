@@ -57,27 +57,31 @@ def get_df(symbol):
 
 def run_scan():
     now_utc = datetime.now(timezone.utc)
-    delay_min = now_utc.minute  # 현재 '분' 계산
+    delay_min = now_utc.minute
+    # 🎯 현재 '날짜와 시간(시)'을 문자열로 만듭니다 (예: 2024-05-20 13)
+    now_hour_str = now_utc.strftime('%Y-%m-%d %H')
+    file_path = "last_run.txt"
     
     print(f"===== 스캔 시도: {now_utc.strftime('%H:%M:%S')} (UTC) =====")
 
-    # 🎯 [핵심 추가] 0~15분 사이일 때만 정상 스캔을 수행합니다.
-    # 만약 서버 지연으로 16분~29분 사이에 실행되면 조용히 종료하여 중복을 방지합니다.
-    if 15 < delay_min < 30:
-        print(f"이미 피크 타임(15분)이 지나 이번 턴은 스캔 없이 종료합니다. ({delay_min}분)")
-        return
+    # 🎯 [핵심 추가] 1. 파일 읽어서 이번 시간대에 이미 실행했는지 확인
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            if f.read().strip() == now_hour_str:
+                print(f"✅ {now_hour_str}시에 이미 성공적으로 실행되었습니다. 중복 실행을 방지하고 종료합니다.")
+                return
 
-    # 🎯 [기존] 30분 초과 시 메시지 전송 후 종료
+    # 🎯 2. 30분 초과 체크 (기존 유지)
     if delay_min >= 30:
         skip_msg = f"⏳ **스캔 건너뜀:** 현재 {delay_min}분입니다. (30분 초과)\n이미 타점이 지났을 확률이 높아 다음 정각 봉을 기다립니다."
         send_telegram(skip_msg)
         print(f"건너뜀 알림 발송: {delay_min}분")
         return
 
+    # --- 여기서부터 실제 코인 스캔 로직 (건드리지 않음) ---
     symbols = get_symbols()
     found_count = 0
     
-    # 메모리 정리 (24시간 지난 신호 삭제)
     current_time_ms = time.time() * 1000
     expired_ids = [sid for sid, timestamp in sent_signals.items() if current_time_ms - timestamp > 86400000]
     for eid in expired_ids: del sent_signals[eid]
@@ -95,10 +99,8 @@ def run_scan():
         prev_price = prev['close']
         candle_time = last['time']
 
-        # [오른쪽 3번 추가] 가격 변화율 계산 (비율)
         price_change_pct = ((curr_price - prev_price) / prev_price) * 100
 
-        # 🎯 [수정] 빡센 전략 조건 (RSI 25미만, ADX 30이상, +DI 40이상)
         if (not pd.isna(rsi) and rsi < 25 and 
             plus_di >= 40 and 
             adx >= 30 and 
@@ -109,13 +111,11 @@ def run_scan():
                 sent_signals[signal_id] = current_time_ms
                 found_count += 1
                 
-                # [왼쪽 3번 추가] 손절(SL) 및 익절(TP) 계산 (ATR 2배 적용)
                 tp_price = curr_price + (atr * 2)
                 sl_price = curr_price - (atr * 2)
                 
                 clean_name = symbol.split(':')[0].split('/')[0]
 
-                # 메시지 구성 (지연 시간 정보 포함)
                 msg = (f"🔥 *[코인이름: {clean_name}]*\n"
                        f"⏱ **지연 시간:** 정각 대비 {delay_min}분 경과\n\n"
                        f"💵 **현재가:** {curr_price} ({round(price_change_pct, 2)}%)\n"
@@ -135,8 +135,11 @@ def run_scan():
 
         time.sleep(0.1)
 
-    print(f"===== 스캔 종료 (발견: {found_count}) =====")
+    # 🎯 [핵심 추가] 3. 모든 스캔이 무사히 끝나면 파일에 현재 시간 기록
+    with open(file_path, "w") as f:
+        f.write(now_hour_str)
+    
+    print(f"===== 스캔 종료 (발견: {found_count}) 및 {now_hour_str}시 기록 완료 =====")
 
 if __name__ == "__main__":
-    # GitHub Actions용: while True 루프를 제거하고 단발성 실행으로 변경
     run_scan()
