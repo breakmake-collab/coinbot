@@ -59,9 +59,15 @@ def run_scan():
     now_utc = datetime.now(timezone.utc)
     delay_min = now_utc.minute  # 현재 '분' 계산
     
-    print(f"===== 빡센 조건 스캔 시작: {now_utc.strftime('%H:%M:%S')} (UTC) =====")
+    print(f"===== 스캔 시도: {now_utc.strftime('%H:%M:%S')} (UTC) =====")
 
-    # 🎯 [추가] 30분 초과 시 스캔 건너뛰고 메시지 전송
+    # 🎯 [핵심 추가] 0~15분 사이일 때만 정상 스캔을 수행합니다.
+    # 만약 서버 지연으로 16분~29분 사이에 실행되면 조용히 종료하여 중복을 방지합니다.
+    if 15 < delay_min < 30:
+        print(f"이미 피크 타임(15분)이 지나 이번 턴은 스캔 없이 종료합니다. ({delay_min}분)")
+        return
+
+    # 🎯 [기존] 30분 초과 시 메시지 전송 후 종료
     if delay_min >= 30:
         skip_msg = f"⏳ **스캔 건너뜀:** 현재 {delay_min}분입니다. (30분 초과)\n이미 타점이 지났을 확률이 높아 다음 정각 봉을 기다립니다."
         send_telegram(skip_msg)
@@ -132,6 +138,5 @@ def run_scan():
     print(f"===== 스캔 종료 (발견: {found_count}) =====")
 
 if __name__ == "__main__":
-    while True:
-        run_scan()
-        time.sleep(3600)
+    # GitHub Actions용: while True 루프를 제거하고 단발성 실행으로 변경
+    run_scan()
