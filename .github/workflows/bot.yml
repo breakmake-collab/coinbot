@@ -2,29 +2,28 @@ name: Crypto Signal Scan
 
 on:
   schedule:
-    # 5분, 15분, 25분으로 살짝 늦췄습니다. (정각에 서버가 너무 붐벼서 안 돌 때가 많음)
     - cron: '2,11,20 * * * *'
-  workflow_dispatch: # 이 버튼이 있어야 수동 실행이 가능합니다.
+  workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 파일 저장을 위해 필수
+      contents: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4 # 최신 버전 v4로 업데이트
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v5 # 최신 버전 v5로 업데이트
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ccxt pandas pandas-ta requests # requirements.txt 없이 직접 설치해서 오류 방지
+          pip install ccxt pandas pandas-ta requests
 
       - name: Run Crypto Signal Bot
         env:
