@@ -17,6 +17,7 @@ exchange = ccxt.bitget({
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
+# 중복 알림 방지용 리스트
 sent_signals = []
 
 def send_telegram(msg):
@@ -28,6 +29,7 @@ def send_telegram(msg):
     except: pass
 
 def get_symbols():
+    """비트겟에서 활성화된 모든 USDT 선물 종목 리스트 획득"""
     try:
         markets = exchange.load_markets()
         return [
@@ -39,7 +41,7 @@ def get_symbols():
         return []
 
 def get_df(symbol):
-    """1시간봉 데이터 수집 및 지표 계산 (ATR 추가)"""
+    """1시간봉 데이터 수집 및 지표 계산 (ATR 포함)"""
     try:
         ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=100)
         if not ohlcv or len(ohlcv) < 50: return pd.DataFrame()
@@ -53,7 +55,7 @@ def get_df(symbol):
         df['adx'] = adx_df.iloc[:, 0]
         df['plus_di'] = adx_df.iloc[:, 1]
         
-        # [추가] ATR 계산 (손절/익절 가이드라인용)
+        # ATR 계산 (손절/익절 가이드라인용)
         df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
         
         return df
@@ -84,7 +86,7 @@ def run_scan():
         v_prev = prev['volume']
         curr_price = last['close']
 
-        # 🎯 기존 최적화 타점 조건 유지
+        # 🎯 최적화 타점 조건
         if (not pd.isna(rsi) and rsi < 30 and 
             plus_di > 36 and 
             adx >= 25 and 
@@ -95,14 +97,13 @@ def run_scan():
                 found_count += 1
                 sent_signals.append(signal_id)
                 
-                # [추가] 손절(SL) 및 익절(TP) 계산 (ATR의 2배 적용)
+                # 손절(SL) 및 익절(TP) 계산 (ATR의 2배 적용)
                 tp_price = curr_price + (atr * 2)
                 sl_price = curr_price - (atr * 2)
                 
                 clean_name = symbol.split(':')[0]
-                # 트레이딩뷰 및 비트겟 링크 추가
-                tv_url = f"https://www.tradingview.com/chart/?symbol=BITGET:{clean_name}.P"
 
+                # 트레이딩뷰 링크 제거된 메시지 구성
                 msg = (f"🚨 *[1H SIGNAL FOUND]*\n\n"
                        f"**Symbol:** {clean_name}\n"
                        f"**Price:** {curr_price}\n"
@@ -112,18 +113,18 @@ def run_scan():
                        f"Vol: {round(v_now/v_prev, 1)}x Up ✅\n"
                        f"---Guide---\n"
                        f"🟢 **TP (Target):** {round(tp_price, 4)}\n"
-                       f"🔴 **SL (Stop):** {round(sl_price, 4)}\n\n"
-                       f"🔗 [TradingView]({tv_url})")
+                       f"🔴 **SL (Stop):** {round(sl_price, 4)}")
                 
                 send_telegram(msg)
                 print(f"Signal Sent: {symbol}")
 
+        # API 부하 방지
         time.sleep(0.12)
 
     print(f"===== SCAN END (Total Found: {found_count}) =====")
 
 if __name__ == "__main__":
-    while True: # 무한 반복 추가 (필요 없으면 제거)
+    while True:
         run_scan()
         print("Waiting for next scan... (60 min)")
-        time.sleep(3600) # 1시간마다 반복
+        time.sleep(3600) # 1시간 주기로 반복 스캔
