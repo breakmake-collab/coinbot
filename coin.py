@@ -57,8 +57,17 @@ def get_df(symbol):
 
 def run_scan():
     now_utc = datetime.now(timezone.utc)
-    print(f"===== 빡센 조건 스캔 시작: {now_utc.strftime('%H:%M:%S')} (UTC) =====")
+    delay_min = now_utc.minute  # 현재 '분' 계산
     
+    print(f"===== 빡센 조건 스캔 시작: {now_utc.strftime('%H:%M:%S')} (UTC) =====")
+
+    # 🎯 [추가] 30분 초과 시 스캔 건너뛰고 메시지 전송
+    if delay_min >= 30:
+        skip_msg = f"⏳ **스캔 건너뜀:** 현재 {delay_min}분입니다. (30분 초과)\n이미 타점이 지났을 확률이 높아 다음 정각 봉을 기다립니다."
+        send_telegram(skip_msg)
+        print(f"건너뜀 알림 발송: {delay_min}분")
+        return
+
     symbols = get_symbols()
     found_count = 0
     
@@ -79,10 +88,6 @@ def run_scan():
         curr_price = last['close']
         prev_price = prev['close']
         candle_time = last['time']
-
-        # [추가] 지연 시간 계산 (현재 분 - 0분)
-        # 1시간 봉은 정각에 마감되므로 현재 '분'이 곧 지연된 시간입니다.
-        delay_min = now_utc.minute
 
         # [오른쪽 3번 추가] 가격 변화율 계산 (비율)
         price_change_pct = ((curr_price - prev_price) / prev_price) * 100
